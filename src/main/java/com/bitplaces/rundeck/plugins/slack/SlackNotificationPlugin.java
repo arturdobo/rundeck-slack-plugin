@@ -18,18 +18,9 @@
 package com.bitplaces.rundeck.plugins.slack;
 
 import com.dtolabs.rundeck.core.plugins.Plugin;
-import com.dtolabs.rundeck.core.plugins.configuration.PropertyScope;
 import com.dtolabs.rundeck.plugins.descriptions.PluginDescription;
 import com.dtolabs.rundeck.plugins.descriptions.PluginProperty;
 import com.dtolabs.rundeck.plugins.notification.NotificationPlugin;
-
-import java.io.*;
-import java.net.HttpURLConnection;
-import java.net.MalformedURLException;
-import java.net.URL;
-import java.net.URLEncoder;
-import java.util.*;
-
 import freemarker.cache.ClassTemplateLoader;
 import freemarker.cache.FileTemplateLoader;
 import freemarker.cache.MultiTemplateLoader;
@@ -37,6 +28,18 @@ import freemarker.cache.TemplateLoader;
 import freemarker.template.Configuration;
 import freemarker.template.Template;
 import freemarker.template.TemplateException;
+
+import java.io.DataOutputStream;
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.StringWriter;
+import java.net.HttpURLConnection;
+import java.net.MalformedURLException;
+import java.net.URL;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Scanner;
 
 /**
  * Sends Rundeck job notification messages to a Slack room.
@@ -47,16 +50,10 @@ import freemarker.template.TemplateException;
 @PluginDescription(title="Slack", description="Sends Rundeck Notifications to Slack")
 public class SlackNotificationPlugin implements NotificationPlugin {
 
-    private static final String SLACK_API_BASE = ".slack.com/";
-    private static final String SLACK_API_URL_SCHEMA = "https://";
-    private static final String SLACK_API_WEHOOK_PATH = "services/hooks/incoming-webhook";
-    private static final String SLACK_API_TOKEN = "?token=%s";
-
     private static final String SLACK_MESSAGE_COLOR_GREEN = "good";
     private static final String SLACK_MESSAGE_COLOR_YELLOW = "warning";
     private static final String SLACK_MESSAGE_COLOR_RED = "danger";
 
-    private static final String SLACK_MESSAGE_FROM_NAME = "Rundeck";
     private static final String SLACK_EXT_MESSAGE_TEMPLATE_PATH = "/var/lib/rundeck/libext/templates";
     private static final String SLACK_MESSAGE_TEMPLATE = "slack-message.ftl";
 
@@ -71,34 +68,27 @@ public class SlackNotificationPlugin implements NotificationPlugin {
 
 
     @PluginProperty(
-            title = "API Auth Token",
-            description = "Slack API authentication token.",
+            title = "Webhook URL",
+            description = "Slack Webhook URL.",
             required = true)
-    private String apiAuthToken;
-
-    @PluginProperty(
-            title = "Team Domain",
-            description = "Slack team domain.",
-            required = true)
-    private String teamDomain;
+    private String webhookURL;
 
     @PluginProperty(
             title = "Channel",
             description = "Override default Slack channel to send notification message to.",
-            required = false,
-            defaultValue = "#general")
+            required = false)
     private String room;
 
     @PluginProperty(
             title = "Icon Url",
-            description = "Override webhook Icon",
+            description = "Override Webhook Icon",
             required = false
     )
     private String icon_url;
 
     @PluginProperty(
             title = "User Name",
-            description = "Override webhook username",
+            description = "Override Webhook username",
             required = false
     )
     private String username;
@@ -157,19 +147,13 @@ public class SlackNotificationPlugin implements NotificationPlugin {
             throw new IllegalArgumentException("Unknown trigger type: [" + trigger + "].");
         }
 
-        if (teamDomain.isEmpty()) {
+        if (webhookURL.isEmpty()) {
             throw new SlackNotificationPluginException(
-                    "Slack teamDomain 'plugin.Notification.SlackNotification.teamDomain' missing in framework or project properties");
-        }
-
-        if (apiAuthToken.isEmpty()) {
-            throw new SlackNotificationPluginException(
-                    "Slack apiAuthToken 'plugin.Notification.SlackNotification.apiAuthToken' missing in framework or project properties");
+                    "Slack Webhook URL 'plugin.Notification.SlackNotification.webhookURL' missing in framework or project properties");
         }
 
         String message = generateMessage(trigger, executionData, config, room);
-        String token = String.format(SLACK_API_TOKEN, urlEncode(apiAuthToken));
-        String slackResponse = invokeSlackAPIMethod(teamDomain, token, message);
+        String slackResponse = invokeSlackAPIMethod(webhookURL, message);
 
         if ("ok".equals(slackResponse)) {
             return true;
@@ -210,16 +194,8 @@ public class SlackNotificationPlugin implements NotificationPlugin {
         return sw.toString();
     }
 
-    private String urlEncode(String s) {
-        try {
-            return URLEncoder.encode(s, "UTF-8");
-        } catch (UnsupportedEncodingException unsupportedEncodingException) {
-            throw new SlackNotificationPluginException("URL encoding error: [" + unsupportedEncodingException.getMessage() + "].", unsupportedEncodingException);
-        }
-    }
-
-    private String invokeSlackAPIMethod(String teamDomain, String token, String message) {
-        URL requestUrl = toURL(SLACK_API_URL_SCHEMA + teamDomain + SLACK_API_BASE + SLACK_API_WEHOOK_PATH + token);
+    private String invokeSlackAPIMethod(String webhookUrl, String message) {
+        URL requestUrl = toURL(webhookUrl);
 
         HttpURLConnection connection = null;
         InputStream responseStream = null;

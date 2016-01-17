@@ -11,7 +11,7 @@
   "pretext": "${message}${state}",
   "color": "${color}",
   "channel":"${channel}",
-  "username": "${username!"RunDeck"}",
+  "username": "${username!"Rundeck"}",
   <#if (icon_url)?has_content>"icon_url": "${icon_url}",<#else>"icon_emoji": ":rundeck:",</#if>
   "fields": [
     {
